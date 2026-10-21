@@ -25,6 +25,21 @@ Accept: application/json
 GET {{host}}/api/incidents?status=Unknown
 Accept: application/json
 
-### Lab 1 extension point: expected 501 before student implementation
+# Severity summary. Policy: only existing groups are returned (no zero rows).
+# Order: by criticality, Low -> Medium -> High -> Critical.
+
+### Severity summary without filter: expected 200, groups Low, Medium, High
 GET {{host}}/api/incidents/severity-summary
+Accept: application/json
+
+### Severity summary, status Triaged: expected 200, only Medium with count 1
+GET {{host}}/api/incidents/severity-summary?status=Triaged
+Accept: application/json
+
+### Severity summary, status Resolved: expected 200 and empty array
+GET {{host}}/api/incidents/severity-summary?status=Resolved
+Accept: application/json
+
+### Severity summary, invalid status: expected 400 Validation Problem Details
+GET {{host}}/api/incidents/severity-summary?status=Unknown
 Accept: application/json
