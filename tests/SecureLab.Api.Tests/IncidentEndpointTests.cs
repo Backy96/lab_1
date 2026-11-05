@@ -86,6 +86,19 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
     }
 
+    // Неописана проблема starter: список через кому (Triaged,InProgress = 1|2 = 3)
+    // раніше проходив як Resolved; тепер відхиляється з 400.
+    [Theory]
+    [InlineData("/api/incidents?status=Triaged,InProgress")]
+    [InlineData("/api/incidents/severity-summary?status=Triaged,InProgress")]
+    public async Task StatusFilter_RejectsCommaSeparatedValues(string url)
+    {
+        using var response = await _client.GetAsync(url);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+    }
+
     [Fact]
     public async Task ClientScript_DoesNotUseDangerousInnerHtmlSink()
     {
