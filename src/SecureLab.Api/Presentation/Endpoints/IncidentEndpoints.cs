@@ -38,7 +38,8 @@ public static class IncidentEndpoints
         if (status is not null)
         {
             if (!Enum.TryParse<IncidentStatus>(status, ignoreCase: true, out var candidate)
-                || !Enum.IsDefined(candidate))
+                || !Enum.IsDefined(candidate)
+                || !string.Equals(status, candidate.ToString(), StringComparison.OrdinalIgnoreCase))
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
@@ -68,6 +69,7 @@ public static class IncidentEndpoints
     
     private static async Task<IResult> GetSeveritySummaryAsync(
         string? status,
+        HttpContext httpContext,
         IncidentQueries queries,
         CancellationToken cancellationToken)
     {
@@ -75,7 +77,8 @@ public static class IncidentEndpoints
         if (status is not null)
         {
             if (!Enum.TryParse<IncidentStatus>(status, ignoreCase: true, out var candidate)
-                || !Enum.IsDefined(candidate))
+                || !Enum.IsDefined(candidate)
+                || !string.Equals(status, candidate.ToString(), StringComparison.OrdinalIgnoreCase))
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
@@ -86,7 +89,8 @@ public static class IncidentEndpoints
             parsedStatus = candidate;
         }
 
-        return Results.Ok(await queries.GetSeveritySummaryAsync(parsedStatus, cancellationToken));
+        var traceId = System.Diagnostics.Activity.Current?.Id ?? httpContext.TraceIdentifier;
+        return Results.Ok(await queries.GetSeveritySummaryAsync(parsedStatus, traceId, cancellationToken));
     }
 
 }
