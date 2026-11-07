@@ -1,0 +1,64 @@
+@api = http://localhost:5080
+
+### USB: перевірка встановлення
+GET {{api}}/api/incidents/search?q=USB
+
+### T-01: коректний запит, очікую 201
+POST {{api}}/api/incidents
+Content-Type: application/json
+
+{"title":"Перевірка T-01","description":"Коректний опис інциденту.","severity":"Low","occurredAtUtc":"2026-11-01T10:00:00Z"}
+
+### T-02: порожній title, невідомий severity, майбутня дата, очікую 400
+POST {{api}}/api/incidents
+Content-Type: application/json
+
+{"title":"   ","description":"Опис","severity":"7","occurredAtUtc":"2999-01-01T00:00:00Z"}
+
+### CP-01: overposting (status, ownerUserId, id), очікую 201 зі status=New
+POST {{api}}/api/incidents
+Content-Type: application/json
+
+{"title":"Overposting CP-01","description":"Спроба підмінити службові поля.","severity":"Low","occurredAtUtc":"2026-11-01T10:00:00Z","status":"Closed","ownerUserId":"10000000-0000-0000-0000-000000000002","id":"00000000-0000-0000-0000-000000000001"}
+
+### T-09: High з описом 39 символів, очікую 400
+POST {{api}}/api/incidents
+Content-Type: application/json
+
+{"title":"Cross-field T-09","description":"123456789012345678901234567890123456789","severity":"High","occurredAtUtc":"2026-11-01T10:00:00Z"}
+
+### T-03: дублікат title (перший 201, повтор 409)
+POST {{api}}/api/incidents
+Content-Type: application/json
+
+{"title":"Дублікат T-03","description":"Перший запис.","severity":"Low","occurredAtUtc":"2026-11-01T10:00:00Z"}
+
+###
+POST {{api}}/api/incidents
+Content-Type: application/json
+
+{"title":"  Дублікат T-03  ","description":"Повтор того самого title.","severity":"Low","occurredAtUtc":"2026-11-01T10:00:00Z"}
+
+### T-06: неіснуючий інцидент, очікую 404
+GET {{api}}/api/incidents/00000000-0000-0000-0000-000000000099
+
+### T-10: опис збігається із заголовком, очікую 400
+POST {{api}}/api/incidents
+Content-Type: application/json
+
+{"title":"Збій мережі T-10","description":"  збій МЕРЕЖІ T-10  ","severity":"Low","occurredAtUtc":"2026-11-01T10:00:00Z"}
+
+### S-01 A: звичайний пошук
+GET {{api}}/api/incidents/search?q=USB
+
+### S-01 B: пошук без збігів
+GET {{api}}/api/incidents/search?q=zz-no-match
+
+### S-01 C: ін'єкція в q (до виправлення повертає всі записи)
+GET {{api}}/api/incidents/search?q=zz-no-match%27%20OR%20TRUE%20--%20
+
+### S-01 D: апостроф у q (до виправлення 500)
+GET {{api}}/api/incidents/search?q=O%27Brien
+
+### Сортування: невідоме значення sortBy (після виправлення очікую 400)
+GET {{api}}/api/incidents/search?q=USB&sortBy=unknown
