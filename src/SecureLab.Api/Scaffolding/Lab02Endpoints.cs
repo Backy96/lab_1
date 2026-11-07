@@ -9,21 +9,42 @@ public static class Lab02Endpoints
 {
     public static void MapLab02Endpoints(this WebApplication app)
     {
-        app.MapGet("/api/incidents/search", async (string? q, string? sortBy, SecureLabDbContext db, CancellationToken ct) =>
+               app.MapGet("/api/incidents/search", async (string? q, string? sortBy, SecureLabDbContext db, CancellationToken ct) =>
         {
-            var order = sortBy switch
+            if (!string.IsNullOrEmpty(sortBy) && sortBy is not ("createdAtUtc" or "severity" or "status"))
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["sortBy"] = ["Допустимі значення: createdAtUtc, severity, status."]
+                });
+
+            var query = db.Incidents.AsNoTracking();
+
+            if (!string.IsNullOrEmpty(q))
             {
-                null or "" or "createdAtUtc" => "created_at_utc DESC",
-                "severity" => "severity", "status" => "status", _ => sortBy
+                var escaped = q.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+                var pattern = "%" + escaped + "%";
+                query = query.Where(i => EF.Functions.ILike(i.Title, pattern, "\\")
+                    || EF.Functions.ILike(i.Description, pattern, "\\"));
+            }
+
+            IOrderedQueryable<Incident> ordered = sortBy switch
+            {
+                "severity" => query.OrderBy(i =>
+                    i.Severity == IncidentSeverity.Critical ? 0
+                    : i.Severity == IncidentSeverity.High ? 1
+                    : i.Severity == IncidentSeverity.Medium ? 2 : 3),
+                "status" => query.OrderBy(i =>
+                    i.Status == IncidentStatus.New ? 0
+                    : i.Status == IncidentStatus.Triaged ? 1
+                    : i.Status == IncidentStatus.InProgress ? 2
+                    : i.Status == IncidentStatus.Resolved ? 3 : 4),
+                _ => query.OrderByDescending(i => i.CreatedAtUtc)
             };
-            var sql = "SELECT * FROM incidents WHERE title ILIKE '%" + (q ?? "")
-                + "%' OR description ILIKE '%" + (q ?? "") + "%' ORDER BY " + order + " LIMIT 50";
-            var rows = await db.Incidents.FromSqlRaw(sql).AsNoTracking().ToListAsync(ct);
-            return Results.Ok(rows.Select(row => new
-            {
+
+            var rows = await ordered.ThenBy(i => i.Id).Take(50).ToListAsync(ct);
+            return Results.Ok(rows.Select(row => new IncidentSearchItem(
                 row.Id, row.Title, row.Description,
-                Severity = row.Severity.ToString(), Status = row.Status.ToString(), row.CreatedAtUtc
-            }));
+                row.Severity.ToString(), row.Status.ToString(), row.CreatedAtUtc)));
         });
         app.MapPost("/api/incidents", async (CreateIncidentRequest request, SecureLabDbContext db, CancellationToken ct) =>
         {
@@ -95,3 +116,6 @@ public sealed record CreateIncidentRequest(
 public sealed record CreatedIncidentResponse(
     Guid Id, string Title, string Severity, string Status,
     DateTimeOffset OccurredAtUtc, DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc);
+public sealed record IncidentSearchItem(
+    Guid Id, string Title, string Description,
+    string Severity, string Status, DateTimeOffset CreatedAtUtc);
