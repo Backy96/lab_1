@@ -15,6 +15,13 @@ public sealed class IncidentInputTests(SecureLabApiFactory factory)
     private static readonly Guid UsbId = Guid.Parse("20000000-0000-0000-0000-000000000005");
     private static readonly Guid OBrienId = Guid.Parse("20000000-0000-0000-0000-000000000004");
 
+    private async Task<HttpClient> LoginAliceAsync()
+    {
+        var password = Environment.GetEnvironmentVariable("SeedUsers__Password")
+            ?? throw new InvalidOperationException("Set local SeedUsers__Password outside Git.");
+        return await factory.LoginAsync("alice", password);
+    }
+
     private static object Body(string title, string description = "Штучний опис для автоматичного тесту.",
         string severity = "Low") => new
     {
@@ -43,9 +50,10 @@ public sealed class IncidentInputTests(SecureLabApiFactory factory)
     [Fact]
     public async Task Post_InvalidDto_Returns400WithFieldKeys()
     {
+        using var alice = await LoginAliceAsync();
         try
         {
-            using var response = await _client.PostAsJsonAsync("/api/incidents", new
+            using var response = await alice.PostAsJsonAsync("/api/incidents", new
             {
                 title = "   ",
                 description = "",
@@ -69,13 +77,14 @@ public sealed class IncidentInputTests(SecureLabApiFactory factory)
     [Fact]
     public async Task Post_DuplicateActiveTitle_Returns409()
     {
+        using var alice = await LoginAliceAsync();
         var title = $"Regression-{Guid.NewGuid():N}";
         try
         {
-            using var first = await _client.PostAsJsonAsync("/api/incidents", Body(title));
+            using var first = await alice.PostAsJsonAsync("/api/incidents", Body(title));
             Assert.Equal(HttpStatusCode.Created, first.StatusCode);
 
-            using var second = await _client.PostAsJsonAsync("/api/incidents", Body($"  {title}  "));
+            using var second = await alice.PostAsJsonAsync("/api/incidents", Body($"  {title}  "));
             Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
             Assert.Equal("application/problem+json", second.Content.Headers.ContentType?.MediaType);
             var json = await second.Content.ReadAsStringAsync();
@@ -90,17 +99,18 @@ public sealed class IncidentInputTests(SecureLabApiFactory factory)
     [Fact]
     public async Task Post_HighSeverityDescriptionLength_39Fails_40Passes()
     {
+        using var alice = await LoginAliceAsync();
         var title39 = $"Len39-{Guid.NewGuid():N}";
         var title40 = $"Len40-{Guid.NewGuid():N}";
         try
         {
-            using var short39 = await _client.PostAsJsonAsync("/api/incidents",
+            using var short39 = await alice.PostAsJsonAsync("/api/incidents",
                 Body(title39, new string('x', 39), "High"));
             Assert.Equal(HttpStatusCode.BadRequest, short39.StatusCode);
             var errors = await ErrorsAsync(short39);
             Assert.True(errors.TryGetProperty("description", out _));
 
-            using var ok40 = await _client.PostAsJsonAsync("/api/incidents",
+            using var ok40 = await alice.PostAsJsonAsync("/api/incidents",
                 Body(title40, new string('x', 40), "High"));
             Assert.Equal(HttpStatusCode.Created, ok40.StatusCode);
         }
@@ -113,16 +123,17 @@ public sealed class IncidentInputTests(SecureLabApiFactory factory)
     [Fact]
     public async Task Post_DescriptionEqualsTitle_Returns400_DifferentDescriptionReturns201()
     {
+        using var alice = await LoginAliceAsync();
         var title = $"T10-{Guid.NewGuid():N}";
         try
         {
-            using var invalid = await _client.PostAsJsonAsync("/api/incidents",
+            using var invalid = await alice.PostAsJsonAsync("/api/incidents",
                 Body(title, $"  {title.ToUpperInvariant()}  "));
             Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
             var errors = await ErrorsAsync(invalid);
             Assert.True(errors.TryGetProperty("description", out _));
 
-            using var valid = await _client.PostAsJsonAsync("/api/incidents",
+            using var valid = await alice.PostAsJsonAsync("/api/incidents",
                 Body(title, "Окремий опис, який відрізняється від заголовка."));
             Assert.Equal(HttpStatusCode.Created, valid.StatusCode);
         }
@@ -135,11 +146,12 @@ public sealed class IncidentInputTests(SecureLabApiFactory factory)
     [Fact]
     public async Task Post_ExtraServerFields_AreIgnoredAndServerValuesUsed()
     {
+        using var alice = await LoginAliceAsync();
         var title = $"Overposting-{Guid.NewGuid():N}";
         var sentId = Guid.NewGuid();
         try
         {
-            using var response = await _client.PostAsJsonAsync("/api/incidents", new
+            using var response = await alice.PostAsJsonAsync("/api/incidents", new
             {
                 title,
                 description = "Спроба підмінити службові поля.",

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using SecureLab.Api.Data;
 using SecureLab.Api.Data.Entities;
@@ -46,7 +47,7 @@ public static class Lab02Endpoints
                 row.Id, row.Title, row.Description,
                 row.Severity.ToString(), row.Status.ToString(), row.CreatedAtUtc)));
         });
-        app.MapPost("/api/incidents", async (CreateIncidentRequest request, SecureLabDbContext db, CancellationToken ct) =>
+            app.MapPost("/api/incidents", async (CreateIncidentRequest request, HttpContext httpContext, SecureLabDbContext db, CancellationToken ct) =>
         {
             var now = DateTimeOffset.UtcNow;
             var errors = new Dictionary<string, string[]>();
@@ -90,10 +91,12 @@ public static class Lab02Endpoints
                     statusCode: StatusCodes.Status409Conflict,
                     title: "Інцидент уже існує",
                     detail: "Незакритий інцидент з таким заголовком уже зареєстровано.");
+            if (!Guid.TryParse(httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var ownerId))
 
+                return Results.Problem(statusCode: StatusCodes.Status500InternalServerError);
             var incident = new Incident
             {
-                Id = Guid.NewGuid(), OwnerUserId = DbSeeder.AliceId,
+                Id = Guid.NewGuid(), OwnerUserId = ownerId,
                 Title = title, Description = description,
                 Severity = severity, Status = IncidentStatus.New,
                 OccurredAtUtc = request.OccurredAtUtc!.Value.ToUniversalTime(),
@@ -106,7 +109,7 @@ public static class Lab02Endpoints
                 incident.Id, incident.Title, incident.Severity.ToString(), incident.Status.ToString(),
                 incident.OccurredAtUtc, incident.CreatedAtUtc, incident.UpdatedAtUtc);
             return Results.Created($"/api/incidents/{incident.Id}", response);
-        });
+        }).RequireAuthorization();
     }
 }
 
