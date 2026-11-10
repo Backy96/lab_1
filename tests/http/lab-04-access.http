@@ -1,0 +1,81 @@
+@host = http://localhost:5080
+@aliceId = 20000000-0000-0000-0000-000000000001
+@aliceOwnId = 20000000-0000-0000-0000-000000000003
+@bobId = 20000000-0000-0000-0000-000000000002
+@bobSearchId = 20000000-0000-0000-0000-000000000004
+@comment1 = 30000000-0000-0000-0000-000000000001
+@comment2 = 30000000-0000-0000-0000-000000000002
+@comment3 = 30000000-0000-0000-0000-000000000003
+
+### Alice login; REST Client reads process environment
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{ "userName": "alice", "password": "{{$processEnv SeedUsers__Password}}" }
+
+### Own details
+GET {{host}}/api/incidents/{{aliceId}}
+Accept: application/json
+
+### Foreign details with the same Alice cookie
+GET {{host}}/api/incidents/{{bobId}}
+Accept: application/json
+
+### List, summary and search as Alice
+GET {{host}}/api/incidents
+Accept: application/json
+
+###
+GET {{host}}/api/incidents/severity-summary
+Accept: application/json
+
+###
+GET {{host}}/api/incidents/search?q=O%27Brien
+Accept: application/json
+
+### Foreign update with the same Alice cookie
+PUT {{host}}/api/incidents/{{bobId}}
+Content-Type: application/json
+
+{ "title": "PoC changed by Alice", "description": "Text replaced from the Alice account during the PoC.", "occurredAtUtc": "2026-08-02T14:10:00Z" }
+
+### Reporter calls privileged triage on foreign incident
+POST {{host}}/api/incidents/{{bobId}}/triage
+
+### Foreign delete
+DELETE {{host}}/api/incidents/{{bobSearchId}}
+
+### Child comment of Bob incident
+GET {{host}}/api/incident-comments/{{comment2}}
+Accept: application/json
+
+### Internal comment on own incident
+GET {{host}}/api/incident-comments/{{comment3}}
+Accept: application/json
+
+### Bob login changes current identity
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{ "userName": "bob", "password": "{{$processEnv SeedUsers__Password}}" }
+
+### Own details
+GET {{host}}/api/incidents/{{bobId}}
+Accept: application/json
+
+### Morgan login; Analyst read
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{ "userName": "morgan", "password": "{{$processEnv SeedUsers__Password}}" }
+
+### Permitted Analyst read
+GET {{host}}/api/incidents/{{aliceId}}
+Accept: application/json
+
+### Permitted Analyst triage of a New incident
+POST {{host}}/api/incidents/{{aliceOwnId}}/triage
+
+### Analyst reads internal comment
+GET {{host}}/api/incident-comments/{{comment3}}
+Accept: application/json
