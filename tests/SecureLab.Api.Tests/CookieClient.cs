@@ -19,4 +19,12 @@ public static class CookieClient
         }
         return client;
     }
+
+    // Пароль береться зі змінної середовища, у репозиторії його немає.
+    public static Task<HttpClient> LoginAsync(this SecureLabApiFactory factory, string userName)
+    {
+        var password = Environment.GetEnvironmentVariable("SeedUsers__Password")
+            ?? throw new InvalidOperationException("Set local SeedUsers__Password outside Git.");
+        return factory.LoginAsync(userName, password);
+    }
 }

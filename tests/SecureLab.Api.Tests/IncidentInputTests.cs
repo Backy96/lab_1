@@ -11,16 +11,10 @@ namespace SecureLab.Api.Tests;
 public sealed class IncidentInputTests(SecureLabApiFactory factory)
     : IClassFixture<SecureLabApiFactory>
 {
-    private readonly HttpClient _client = factory.CreateClient();
     private static readonly Guid UsbId = Guid.Parse("20000000-0000-0000-0000-000000000005");
     private static readonly Guid OBrienId = Guid.Parse("20000000-0000-0000-0000-000000000004");
 
-    private async Task<HttpClient> LoginAliceAsync()
-    {
-        var password = Environment.GetEnvironmentVariable("SeedUsers__Password")
-            ?? throw new InvalidOperationException("Set local SeedUsers__Password outside Git.");
-        return await factory.LoginAsync("alice", password);
-    }
+    private Task<HttpClient> LoginAliceAsync() => factory.LoginAsync("alice");
 
     private static object Body(string title, string description = "Штучний опис для автоматичного тесту.",
         string severity = "Low") => new
@@ -185,7 +179,8 @@ public sealed class IncidentInputTests(SecureLabApiFactory factory)
     [Fact]
     public async Task Search_UnknownSortBy_Returns400WithSortByKey()
     {
-        using var response = await _client.GetAsync("/api/incidents/search?sortBy=unknown");
+        using var alice = await LoginAliceAsync();
+        using var response = await alice.GetAsync("/api/incidents/search?sortBy=unknown");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var errors = await ErrorsAsync(response);
@@ -195,25 +190,28 @@ public sealed class IncidentInputTests(SecureLabApiFactory factory)
     [Fact]
     public async Task Search_InjectionInput_ReturnsEmptySet_AndUsbStillFound()
     {
+        using var alice = await LoginAliceAsync();
         var injection = "zz-no-match' OR TRUE -- ";
-        using var attack = await _client.GetAsync(
+        using var attack = await alice.GetAsync(
             "/api/incidents/search?q=" + Uri.EscapeDataString(injection));
         Assert.Equal(HttpStatusCode.OK, attack.StatusCode);
         var attackRows = await attack.Content.ReadFromJsonAsync<List<IncidentSearchItem>>();
         Assert.NotNull(attackRows);
         Assert.Empty(attackRows);
 
-        var usbRows = await _client.GetFromJsonAsync<List<IncidentSearchItem>>(
+        var usbRows = await alice.GetFromJsonAsync<List<IncidentSearchItem>>(
             "/api/incidents/search?q=USB");
         Assert.NotNull(usbRows);
         var usb = Assert.Single(usbRows);
         Assert.Equal(UsbId, usb.Id);
     }
 
+    // O'Brien належить Bob, тому пошук виконується від його імені.
     [Fact]
     public async Task Search_ApostropheInQuery_ReturnsMatchingRecord()
     {
-        var rows = await _client.GetFromJsonAsync<List<IncidentSearchItem>>(
+        using var bob = await factory.LoginAsync("bob");
+        var rows = await bob.GetFromJsonAsync<List<IncidentSearchItem>>(
             "/api/incidents/search?q=" + Uri.EscapeDataString("O'Brien"));
 
         Assert.NotNull(rows);

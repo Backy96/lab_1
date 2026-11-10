@@ -23,7 +23,8 @@ public sealed record IncidentCommentResponse(
     Guid Id,
     string AuthorDisplayName,
     string Text,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc,
+    bool IsInternal);
 
 public sealed record IncidentSeveritySummaryResponse(
     string Severity,

@@ -9,23 +9,30 @@ namespace SecureLab.Api.Tests;
 public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
     : IClassFixture<SecureLabApiFactory>
 {
-    private readonly HttpClient _client = factory.CreateClient();
+    private static readonly Guid BobIncidentId = DbSeeder.BobIncidentId;
+    private static readonly Guid BobSearchIncidentId = Guid.Parse("20000000-0000-0000-0000-000000000004");
+    private static readonly Guid UsbIncidentId = Guid.Parse("20000000-0000-0000-0000-000000000005");
 
+    // A-05: список містить лише власні інциденти користувача.
     [Fact]
-    public async Task GetList_ReturnsSeededIncidents()
+    public async Task GetList_ReturnsOnlyOwnIncidents()
     {
-        var incidents = await _client.GetFromJsonAsync<List<IncidentListItemResponse>>(
-            "/api/incidents");
+        using var alice = await factory.LoginAsync("alice");
+        var incidents = await alice.GetFromJsonAsync<List<IncidentListItemResponse>>("/api/incidents");
 
         Assert.NotNull(incidents);
         Assert.Contains(incidents, incident => incident.Id == DbSeeder.AliceIncidentId);
-        Assert.Contains(incidents, incident => incident.Id == DbSeeder.BobIncidentId);
+        Assert.Contains(incidents, incident => incident.Id == DbSeeder.SafeTextIncidentId);
+        Assert.Contains(incidents, incident => incident.Id == UsbIncidentId);
+        Assert.DoesNotContain(incidents, incident => incident.Id == BobIncidentId);
+        Assert.DoesNotContain(incidents, incident => incident.Id == BobSearchIncidentId);
     }
 
     [Fact]
     public async Task GetDetails_ForUnknownId_ReturnsProblemDetails404()
     {
-        using var response = await _client.GetAsync($"/api/incidents/{Guid.NewGuid()}");
+        using var alice = await factory.LoginAsync("alice");
+        using var response = await alice.GetAsync($"/api/incidents/{Guid.NewGuid()}");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
@@ -34,7 +41,8 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
     [Fact]
     public async Task GetDetails_DoesNotExposeInternalOwnerFields()
     {
-        using var response = await _client.GetAsync(
+        using var alice = await factory.LoginAsync("alice");
+        using var response = await alice.GetAsync(
             $"/api/incidents/{DbSeeder.AliceIncidentId}");
         var json = await response.Content.ReadAsStringAsync();
         using var document = JsonDocument.Parse(json);
@@ -48,7 +56,8 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
     [Fact]
     public async Task GetSeveritySummary_ReturnsGroupsOrderedByCriticality()
     {
-        var summary = await _client.GetFromJsonAsync<List<IncidentSeveritySummaryResponse>>(
+        using var alice = await factory.LoginAsync("alice");
+        var summary = await alice.GetFromJsonAsync<List<IncidentSeveritySummaryResponse>>(
             "/api/incidents/severity-summary");
 
         Assert.NotNull(summary);
@@ -66,9 +75,10 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
     [InlineData("?status=Triaged")]
     public async Task GetSeveritySummary_TotalEqualsNumberOfIncidents(string query)
     {
-        var incidents = await _client.GetFromJsonAsync<List<IncidentListItemResponse>>(
+        using var alice = await factory.LoginAsync("alice");
+        var incidents = await alice.GetFromJsonAsync<List<IncidentListItemResponse>>(
             $"/api/incidents{query}");
-        var summary = await _client.GetFromJsonAsync<List<IncidentSeveritySummaryResponse>>(
+        var summary = await alice.GetFromJsonAsync<List<IncidentSeveritySummaryResponse>>(
             $"/api/incidents/severity-summary{query}");
 
         Assert.NotNull(incidents);
@@ -79,7 +89,8 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
     [Fact]
     public async Task GetSeveritySummary_ForUnknownStatus_ReturnsProblemDetails400()
     {
-        using var response = await _client.GetAsync(
+        using var alice = await factory.LoginAsync("alice");
+        using var response = await alice.GetAsync(
             "/api/incidents/severity-summary?status=Unknown");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -93,7 +104,8 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
     [InlineData("/api/incidents/severity-summary?status=Triaged,InProgress")]
     public async Task StatusFilter_RejectsCommaSeparatedValues(string url)
     {
-        using var response = await _client.GetAsync(url);
+        using var alice = await factory.LoginAsync("alice");
+        using var response = await alice.GetAsync(url);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
@@ -102,7 +114,8 @@ public sealed class IncidentEndpointTests(SecureLabApiFactory factory)
     [Fact]
     public async Task ClientScript_DoesNotUseDangerousInnerHtmlSink()
     {
-        var script = await _client.GetStringAsync("/app.js");
+        using var client = factory.CreateClient();
+        var script = await client.GetStringAsync("/app.js");
 
         Assert.DoesNotContain("innerHTML", script, StringComparison.Ordinal);
         Assert.Contains("textContent", script, StringComparison.Ordinal);

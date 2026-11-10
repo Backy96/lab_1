@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
+using SecureLab.Api.Application.Incidents;
 using SecureLab.Api.Data;
 using SecureLab.Api.Data.Entities;
 
@@ -10,7 +11,7 @@ public static class Lab02Endpoints
 {
     public static void MapLab02Endpoints(this WebApplication app)
     {
-               app.MapGet("/api/incidents/search", async (string? q, string? sortBy, SecureLabDbContext db, CancellationToken ct) =>
+        app.MapGet("/api/incidents/search", async (string? q, string? sortBy, HttpContext httpContext, SecureLabDbContext db, CancellationToken ct) =>
         {
             if (!string.IsNullOrEmpty(sortBy) && sortBy is not ("createdAtUtc" or "severity" or "status"))
                 return Results.ValidationProblem(new Dictionary<string, string[]>
@@ -18,7 +19,11 @@ public static class Lab02Endpoints
                     ["sortBy"] = ["Допустимі значення: createdAtUtc, severity, status."]
                 });
 
-            var query = db.Incidents.AsNoTracking();
+            if (!IncidentViewer.TryCreate(httpContext.User, out var viewer))
+                return Results.Unauthorized();
+
+            // Scoping до фільтра пошуку, сортування і Take(50).
+            var query = db.Incidents.AsNoTracking().VisibleTo(viewer);
 
             if (!string.IsNullOrEmpty(q))
             {
@@ -46,8 +51,9 @@ public static class Lab02Endpoints
             return Results.Ok(rows.Select(row => new IncidentSearchItem(
                 row.Id, row.Title, row.Description,
                 row.Severity.ToString(), row.Status.ToString(), row.CreatedAtUtc)));
-        });
-            app.MapPost("/api/incidents", async (CreateIncidentRequest request, HttpContext httpContext, SecureLabDbContext db, CancellationToken ct) =>
+        }).RequireAuthorization();
+
+        app.MapPost("/api/incidents", async (CreateIncidentRequest request, HttpContext httpContext, SecureLabDbContext db, CancellationToken ct) =>
         {
             var now = DateTimeOffset.UtcNow;
             var errors = new Dictionary<string, string[]>();
@@ -92,8 +98,8 @@ public static class Lab02Endpoints
                     title: "Інцидент уже існує",
                     detail: "Незакритий інцидент з таким заголовком уже зареєстровано.");
             if (!Guid.TryParse(httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var ownerId))
-
                 return Results.Problem(statusCode: StatusCodes.Status500InternalServerError);
+
             var incident = new Incident
             {
                 Id = Guid.NewGuid(), OwnerUserId = ownerId,
@@ -119,6 +125,7 @@ public sealed record CreateIncidentRequest(
 public sealed record CreatedIncidentResponse(
     Guid Id, string Title, string Severity, string Status,
     DateTimeOffset OccurredAtUtc, DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc);
+
 public sealed record IncidentSearchItem(
     Guid Id, string Title, string Description,
     string Severity, string Status, DateTimeOffset CreatedAtUtc);

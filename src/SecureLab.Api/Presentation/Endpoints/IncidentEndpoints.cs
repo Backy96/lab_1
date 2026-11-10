@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using SecureLab.Api.Application.Incidents;
 using SecureLab.Api.Data;
@@ -11,7 +13,8 @@ public static class IncidentEndpoints
     public static IEndpointRouteBuilder MapIncidentEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/incidents")
-            .WithTags("Incidents");
+            .WithTags("Incidents")
+            .RequireAuthorization();
 
         group.MapGet("/", GetListAsync)
             .WithName("GetIncidents")
@@ -28,65 +31,75 @@ public static class IncidentEndpoints
             .Produces<IReadOnlyList<IncidentSeveritySummaryResponse>>()
             .ProducesValidationProblem();
 
-        // Vulnerable state ЛР 4: автентифікація є, перевірки власника і ролі немає.
         group.MapPut("/{id:guid}", UpdateAsync)
             .WithName("UpdateIncident")
-            .RequireAuthorization()
             .Produces(StatusCodes.Status204NoContent)
             .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapDelete("/{id:guid}", DeleteAsync)
             .WithName("DeleteIncident")
-            .RequireAuthorization()
             .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/{id:guid}/triage", TriageAsync)
             .WithName("TriageIncident")
-            .RequireAuthorization()
             .Produces(StatusCodes.Status204NoContent)
-            .ProducesProblem(StatusCodes.Status404NotFound);
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return endpoints;
     }
 
     private static async Task<IResult> GetListAsync(
         string? status,
+        HttpContext httpContext,
         IncidentQueries queries,
         CancellationToken cancellationToken)
     {
-        IncidentStatus? parsedStatus = null;
-        if (status is not null)
+        var invalid = ParseStatus(status, out var parsedStatus);
+        if (invalid is not null)
         {
-            if (!Enum.TryParse<IncidentStatus>(status, ignoreCase: true, out var candidate)
-                || !Enum.IsDefined(candidate)
-                || !string.Equals(status, candidate.ToString(), StringComparison.OrdinalIgnoreCase))
-            {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["status"] = ["Допустимі значення: New, Triaged, InProgress, Resolved, Closed."]
-                });
-            }
-
-            parsedStatus = candidate;
+            return invalid;
         }
 
-        return Results.Ok(await queries.GetListAsync(parsedStatus, cancellationToken));
+        if (!IncidentViewer.TryCreate(httpContext.User, out var viewer))
+        {
+            return Results.Unauthorized();
+        }
+
+        return Results.Ok(await queries.GetListAsync(parsedStatus, viewer, cancellationToken));
     }
 
     private static async Task<IResult> GetDetailsAsync(
         Guid id,
+        HttpContext httpContext,
+        IAuthorizationService authorization,
+        ILoggerFactory loggers,
         IncidentQueries queries,
         CancellationToken cancellationToken)
     {
-        var incident = await queries.GetDetailsAsync(id, cancellationToken);
-        return incident is null
-            ? Results.Problem(
-                title: "Інцидент не знайдено",
-                detail: $"Інцидент '{id}' не існує.",
-                statusCode: StatusCodes.Status404NotFound)
-            : Results.Ok(incident);
+        var incident = await queries.FindAsync(id, cancellationToken);
+        if (incident is null)
+        {
+            return IncidentProblems.NotFound();
+        }
+
+        var denied = await IncidentAccess.CheckAsync(
+            httpContext, authorization, loggers, incident, IncidentOperations.Read);
+        if (denied is not null)
+        {
+            return denied;
+        }
+
+        var includeInternal = (await authorization.AuthorizeAsync(
+            httpContext.User, incident, IncidentOperations.ReadInternalComments)).Succeeded;
+
+        var details = await queries.GetDetailsAsync(id, includeInternal, cancellationToken);
+        return details is null ? IncidentProblems.NotFound() : Results.Ok(details);
     }
 
     private static async Task<IResult> GetSeveritySummaryAsync(
@@ -95,38 +108,42 @@ public static class IncidentEndpoints
         IncidentQueries queries,
         CancellationToken cancellationToken)
     {
-        IncidentStatus? parsedStatus = null;
-        if (status is not null)
+        var invalid = ParseStatus(status, out var parsedStatus);
+        if (invalid is not null)
         {
-            if (!Enum.TryParse<IncidentStatus>(status, ignoreCase: true, out var candidate)
-                || !Enum.IsDefined(candidate)
-                || !string.Equals(status, candidate.ToString(), StringComparison.OrdinalIgnoreCase))
-            {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["status"] = ["Допустимі значення: New, Triaged, InProgress, Resolved, Closed."]
-                });
-            }
+            return invalid;
+        }
 
-            parsedStatus = candidate;
+        if (!IncidentViewer.TryCreate(httpContext.User, out var viewer))
+        {
+            return Results.Unauthorized();
         }
 
         var traceId = System.Diagnostics.Activity.Current?.Id ?? httpContext.TraceIdentifier;
-        return Results.Ok(await queries.GetSeveritySummaryAsync(parsedStatus, traceId, cancellationToken));
+        return Results.Ok(await queries.GetSeveritySummaryAsync(parsedStatus, viewer, traceId, cancellationToken));
     }
 
     private static async Task<IResult> UpdateAsync(
         Guid id,
         UpdateIncidentRequest request,
+        HttpContext httpContext,
+        IAuthorizationService authorization,
+        ILoggerFactory loggers,
         SecureLabDbContext dbContext,
         CancellationToken cancellationToken)
     {
-        // Завантаження лише за id, без порівняння з principal.
         var incident = await dbContext.Incidents
             .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (incident is null)
         {
-            return IncidentNotFound();
+            return IncidentProblems.NotFound();
+        }
+
+        var denied = await IncidentAccess.CheckAsync(
+            httpContext, authorization, loggers, incident, IncidentOperations.Update);
+        if (denied is not null)
+        {
+            return denied;
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -146,6 +163,9 @@ public static class IncidentEndpoints
 
     private static async Task<IResult> DeleteAsync(
         Guid id,
+        HttpContext httpContext,
+        IAuthorizationService authorization,
+        ILoggerFactory loggers,
         SecureLabDbContext dbContext,
         CancellationToken cancellationToken)
     {
@@ -153,7 +173,14 @@ public static class IncidentEndpoints
             .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (incident is null)
         {
-            return IncidentNotFound();
+            return IncidentProblems.NotFound();
+        }
+
+        var denied = await IncidentAccess.CheckAsync(
+            httpContext, authorization, loggers, incident, IncidentOperations.Delete);
+        if (denied is not null)
+        {
+            return denied;
         }
 
         dbContext.Incidents.Remove(incident);
@@ -163,21 +190,73 @@ public static class IncidentEndpoints
 
     private static async Task<IResult> TriageAsync(
         Guid id,
+        HttpContext httpContext,
+        IAuthorizationService authorization,
+        ILoggerFactory loggers,
         SecureLabDbContext dbContext,
         CancellationToken cancellationToken)
     {
-        // Немає ні перевірки ролі Analyst, ні перевірки поточного статусу.
         var incident = await dbContext.Incidents
             .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (incident is null)
         {
-            return IncidentNotFound();
+            return IncidentProblems.NotFound();
         }
 
+        var denied = await IncidentAccess.CheckAsync(
+            httpContext, authorization, loggers, incident, IncidentOperations.Triage);
+        if (denied is not null)
+        {
+            return denied;
+        }
+
+        if (!Guid.TryParse(httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+        {
+            return Results.Unauthorized();
+        }
+
+        if (incident.Status != IncidentStatus.New)
+        {
+            return IncidentProblems.StateConflict();
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        dbContext.Add(new IncidentStatusHistory
+        {
+            Id = Guid.NewGuid(),
+            IncidentId = incident.Id,
+            ChangedByUserId = userId,
+            OldStatus = IncidentStatus.New,
+            NewStatus = IncidentStatus.Triaged,
+            Note = "Первинну оцінку завершено.",
+            CreatedAtUtc = now
+        });
         incident.Status = IncidentStatus.Triaged;
-        incident.UpdatedAtUtc = DateTimeOffset.UtcNow;
+        incident.UpdatedAtUtc = now;
         await dbContext.SaveChangesAsync(cancellationToken);
         return Results.NoContent();
+    }
+
+    private static IResult? ParseStatus(string? status, out IncidentStatus? parsed)
+    {
+        parsed = null;
+        if (status is null)
+        {
+            return null;
+        }
+
+        if (!Enum.TryParse<IncidentStatus>(status, ignoreCase: true, out var candidate)
+            || !Enum.IsDefined(candidate)
+            || !string.Equals(status, candidate.ToString(), StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["status"] = ["Допустимі значення: New, Triaged, InProgress, Resolved, Closed."]
+            });
+        }
+
+        parsed = candidate;
+        return null;
     }
 
     private static Dictionary<string, string[]> ValidateUpdate(
@@ -214,8 +293,4 @@ public static class IncidentEndpoints
 
         return errors;
     }
-
-    private static IResult IncidentNotFound() => Results.Problem(
-        title: "Інцидент не знайдено",
-        statusCode: StatusCodes.Status404NotFound);
 }
