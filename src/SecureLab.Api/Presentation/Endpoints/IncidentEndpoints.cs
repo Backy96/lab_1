@@ -90,7 +90,8 @@ public static class IncidentEndpoints
         }
 
         var traceId = System.Diagnostics.Activity.Current?.Id ?? httpContext.TraceIdentifier;
-        return Results.Ok(await queries.GetSeveritySummaryAsync(parsedStatus, traceId, cancellationToken));
+        var requestId = httpContext.TraceIdentifier;
+        return Results.Ok(await queries.GetSeveritySummaryAsync(parsedStatus, traceId, requestId, cancellationToken));
     }
 
 }

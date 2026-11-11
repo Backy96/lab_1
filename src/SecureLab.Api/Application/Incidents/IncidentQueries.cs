@@ -62,6 +62,7 @@ public sealed class IncidentQueries(SecureLabDbContext dbContext, ILogger<Incide
     public async Task<IReadOnlyList<IncidentSeveritySummaryResponse>> GetSeveritySummaryAsync(
         IncidentStatus? status,
         string traceId,
+        string requestId,
         CancellationToken cancellationToken)
     {
         var query = dbContext.Incidents.AsNoTracking();
@@ -81,10 +82,11 @@ public sealed class IncidentQueries(SecureLabDbContext dbContext, ILogger<Incide
             .ToList();
 
         logger.LogInformation(
-            "Built severity summary for status filter {Status} with {GroupCount} groups for request {TraceId}",
+            "Built severity summary for status filter {Status} with {GroupCount} groups, trace {TraceId}, request {RequestId}",
             status,
             summary.Count,
-            traceId);
+            traceId,
+            requestId);
 
         return summary;
     }
