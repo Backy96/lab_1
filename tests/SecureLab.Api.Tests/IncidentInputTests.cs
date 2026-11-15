@@ -208,4 +208,17 @@ public sealed class IncidentInputTests(SecureLabApiFactory factory)
         var row = Assert.Single(rows);
         Assert.Equal(OBrienId, row.Id);
     }
+
+    [Fact]
+    public async Task Search_ApostropheQuery_Returns200AndExactOBrienRecord()
+    {
+        using var response = await _client.GetAsync(
+            "/api/incidents/search?q=" + Uri.EscapeDataString("O'Brien"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var rows = await response.Content.ReadFromJsonAsync<List<IncidentSearchItem>>();
+        Assert.NotNull(rows);
+        var row = Assert.Single(rows);
+        Assert.Equal(OBrienId, row.Id);
+    }
 }
