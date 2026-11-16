@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using SecureLab.Api.Data.Entities;
+using Microsoft.Net.Http.Headers;
 
 namespace SecureLab.Api.Tests;
 
@@ -55,8 +56,8 @@ public sealed class AuthenticationHardeningTests(SecureLabApiFactory factory)
         }
     }
 
-    [Fact]
-    public async Task LoginCookie_HasHttpOnlySecureAndSameSiteLax()
+       [Fact]
+    public async Task LoginCookie_HasSecurityFlags_AndIsSessionOnly()
     {
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
@@ -78,8 +79,13 @@ public sealed class AuthenticationHardeningTests(SecureLabApiFactory factory)
         Assert.Contains("httponly", attributes);
         Assert.Contains("secure", attributes);
         Assert.Contains("samesite=lax", attributes);
-        Assert.DoesNotContain(attributes,
-            attribute => attribute.StartsWith("expires=") || attribute.StartsWith("max-age="));
+
+        
+        var parsed = SetCookieHeaderValue.Parse(cookie);
+        Assert.False(parsed.Expires.HasValue,
+            $"Сеансова cookie не повинна мати Expires, отримано {parsed.Expires:O}.");
+        Assert.False(parsed.MaxAge.HasValue,
+            $"Сеансова cookie не повинна мати Max-Age, отримано {parsed.MaxAge}.");
     }
 
     [Fact]
