@@ -64,15 +64,6 @@ public sealed class AuthorizationTests(SecureLabApiFactory factory) : IClassFixt
         await db.Incidents.Where(item => item.Id == id).ExecuteDeleteAsync();
     }
 
-    private static string StableFields(string json)
-    {
-        using var document = JsonDocument.Parse(json);
-        return string.Join("|", document.RootElement.EnumerateObject()
-            .Where(property => property.Name != "traceId")
-            .OrderBy(property => property.Name, StringComparer.Ordinal)
-            .Select(property => $"{property.Name}={property.Value}"));
-    }
-
     [Fact]
     public async Task A01_Anonymous_Returns401_WithoutRedirect()
     {
@@ -342,16 +333,17 @@ public sealed class AuthorizationTests(SecureLabApiFactory factory) : IClassFixt
         using var unknownPut = await alice.PutAsJsonAsync(
             $"/api/incidents/{UnknownId}", UpdateBody("A10 title", "Опис для порівняння відповідей."));
 
-        foreach (var (foreign, unknown) in new[] { (foreignGet, unknownGet), (foreignPut, unknownPut) })
+        foreach (var (foreignResponse, unknownResponse) in new[] { (foreignGet, unknownGet), (foreignPut, unknownPut) })
         {
-            Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
-            Assert.Equal(foreign.StatusCode, unknown.StatusCode);
-            Assert.Equal(
-                foreign.Content.Headers.ContentType?.MediaType,
-                unknown.Content.Headers.ContentType?.MediaType);
-            Assert.Equal(
-                StableFields(await foreign.Content.ReadAsStringAsync()),
-                StableFields(await unknown.Content.ReadAsStringAsync()));
+            var foreign = await ProblemSample.FromAsync(foreignResponse);
+            var unknown = await ProblemSample.FromAsync(unknownResponse);
+
+            Assert.Equal(HttpStatusCode.NotFound, foreign.Status);
+            Assert.Equal("application/problem+json", foreign.MediaType);
+            Assert.Equal(ProblemComparer.Normalize(unknown.Body), ProblemComparer.Normalize(foreign.Body));
+            Assert.True(ProblemComparer.AreSame(foreign, unknown));
+            Assert.DoesNotContain("ownerHint", foreign.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain("ownerUserId", foreign.Body, StringComparison.OrdinalIgnoreCase);
         }
     }
 
