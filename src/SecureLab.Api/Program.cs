@@ -52,10 +52,25 @@ if (resetRequested)
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
+const string ContentSecurityPolicy =
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; " +
+    "connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; " +
+    "frame-ancestors 'none'";
+
 app.Use(async (context, next) =>
 {
     context.Response.Headers.XContentTypeOptions = "nosniff";
     context.Response.Headers.Append("Referrer-Policy", "no-referrer");
+
+    // Development-довідник Scalar має власні inline-ресурси, тому він поза політикою клієнта.
+    var isDevelopmentApiReference =
+        app.Environment.IsDevelopment()
+        && context.Request.Path.StartsWithSegments("/scalar");
+    if (!isDevelopmentApiReference)
+    {
+        context.Response.Headers["Content-Security-Policy"] = ContentSecurityPolicy;
+    }
+
     await next(context);
 });
 
