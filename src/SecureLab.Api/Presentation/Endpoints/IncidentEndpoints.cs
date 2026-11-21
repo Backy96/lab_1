@@ -238,6 +238,14 @@ public static class IncidentEndpoints
         incident.Status = IncidentStatus.Triaged;
         incident.UpdatedAtUtc = now;
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        // Audit event дозволеного привілейованого переходу – у тому самому каналі, що й відмови.
+        // Формат полів узгоджено з подією відмови: ISO 8601 час і traceId запиту для зіставлення.
+        var traceId = System.Diagnostics.Activity.Current?.Id ?? httpContext.TraceIdentifier;
+        loggers.CreateLogger("SecureLab.Audit").LogInformation(
+            "incident.status.changed subject={Subject} action={Action} resource={Resource} result={Result} from={From} to={To} occurredAtUtc={OccurredAtUtc} traceId={TraceId}",
+            userId, "incident.triage", incident.Id, "allowed",
+            IncidentStatus.New, IncidentStatus.Triaged, now.ToString("O"), traceId);
         return Results.NoContent();
     }
 
