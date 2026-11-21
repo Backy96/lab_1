@@ -62,6 +62,19 @@ public static class Lab03Identity
                         Window = window,
                         QueueLimit = 0
                     }));
+
+                // Реєстрація відповідає 409 на зайняте ім'я або email, тому без обмеження
+                // частоти вона дає необмежений перебір існуючих облікових записів.
+                var registerPermitLimit = config.GetValue("RateLimiting:RegisterPermitLimit", 5);
+                var registerWindow = TimeSpan.FromSeconds(config.GetValue("RateLimiting:RegisterWindowSeconds", 300));
+                options.AddPolicy("register", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+                    httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = registerPermitLimit,
+                        Window = registerWindow,
+                        QueueLimit = 0
+                    }));
             });
     }
 
@@ -92,7 +105,7 @@ public static class Lab03Identity
             if (!role.Succeeded) throw new InvalidOperationException("Default role assignment failed.");
             loggers.CreateLogger("SecureLab.Auth").LogInformation("User registered {UserId}", user.Id);
             return Results.Created("/api/me", new RegistrationResponse(user.Id, user.UserName!, user.DisplayName));
-        });
+        }).RequireRateLimiting("register");
         app.MapPost("/api/auth/login", async (LoginInput input, SignInManager<ApplicationUser> signIn,
             UserManager<ApplicationUser> users, ILoggerFactory loggers) =>
         {
