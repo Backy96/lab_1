@@ -26,6 +26,7 @@ builder.Services.AddSingleton<IAuthorizationHandler, IncidentAuthorizationHandle
 
 builder.AddLab03Identity();
 builder.AddSecureLabAntiforgery();
+builder.AddSearchRateLimiting();
 
 if (builder.Environment.IsDevelopment())
 {

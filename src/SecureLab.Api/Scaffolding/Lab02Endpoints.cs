@@ -52,7 +52,7 @@ public static class Lab02Endpoints
             return Results.Ok(rows.Select(row => new IncidentSearchItem(
                 row.Id, row.Title, row.Description,
                 row.Severity.ToString(), row.Status.ToString(), row.CreatedAtUtc)));
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequireRateLimiting(SearchRateLimiting.PolicyName);
 
         app.MapPost("/api/incidents", async (CreateIncidentRequest request, HttpContext httpContext, SecureLabDbContext db, CancellationToken ct) =>
         {

@@ -48,8 +48,10 @@ public static class Lab03Identity
                 options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
                 options.OnRejected = (context, _) =>
                 {
+                    // Спільний обробник для всіх policies: шлях без query string, щоб не логувати пошуковий текст.
                     context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
-                        .CreateLogger("SecureLab.Auth").LogWarning("Login rate limit exceeded");
+                        .CreateLogger("SecureLab.RateLimiting")
+                        .LogWarning("Rate limit exceeded for {Path}", context.HttpContext.Request.Path);
                     return ValueTask.CompletedTask;
                 };
                 options.AddPolicy("login", httpContext => RateLimitPartition.GetFixedWindowLimiter(
