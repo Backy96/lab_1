@@ -19,5 +19,21 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  # Advanced variant ЛР 6: спільний лічильник rate limiting пошуку.
+  # Запускається лише явно: docker compose -f infra/compose.yaml --profile redis up -d redis
+  # Зберігає тільки лічильники з TTL, без persistence; порт доступний лише з localhost.
+  redis:
+    image: redis:7.4-alpine
+    profiles: ["redis"]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    restart: "no"
+
 volumes:
   postgres-data:

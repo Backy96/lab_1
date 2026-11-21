@@ -12,7 +12,7 @@ public static class Lab02Endpoints
 {
     public static void MapLab02Endpoints(this WebApplication app)
     {
-        app.MapGet("/api/incidents/search", async (string? q, string? sortBy, HttpContext httpContext, SecureLabDbContext db, CancellationToken ct) =>
+        var search = app.MapGet("/api/incidents/search", async (string? q, string? sortBy, HttpContext httpContext, SecureLabDbContext db, CancellationToken ct) =>
         {
             if (!string.IsNullOrEmpty(sortBy) && sortBy is not ("createdAtUtc" or "severity" or "status"))
                 return Results.ValidationProblem(new Dictionary<string, string[]>
@@ -52,7 +52,19 @@ public static class Lab02Endpoints
             return Results.Ok(rows.Select(row => new IncidentSearchItem(
                 row.Id, row.Title, row.Description,
                 row.Severity.ToString(), row.Status.ToString(), row.CreatedAtUtc)));
-        }).RequireAuthorization().RequireRateLimiting(SearchRateLimiting.PolicyName);
+        }).RequireAuthorization();
+
+        // Advanced variant: спільний лічильник у Redis, якщо його налаштовано; інакше in-memory policy.
+        if (RedisSearchRateLimit.IsEnabled(app.Configuration))
+        {
+            search.AddEndpointFilter<RedisSearchRateLimitFilter>();
+            app.Logger.LogInformation("Search rate limit store: {Store}", "redis");
+        }
+        else
+        {
+            search.RequireRateLimiting(SearchRateLimiting.PolicyName);
+            app.Logger.LogInformation("Search rate limit store: {Store}", "memory");
+        }
 
         app.MapPost("/api/incidents", async (CreateIncidentRequest request, HttpContext httpContext, SecureLabDbContext db, CancellationToken ct) =>
         {
