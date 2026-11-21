@@ -5,6 +5,7 @@ using Scalar.AspNetCore;
 using SecureLab.Api.Application.Incidents;
 using SecureLab.Api.Data;
 using SecureLab.Api.Presentation.Endpoints;
+using SecureLab.Api.Security;
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
@@ -24,6 +25,9 @@ builder.Services.AddScoped<IncidentQueries>();
 builder.Services.AddSingleton<IAuthorizationHandler, IncidentAuthorizationHandler>();
 
 builder.AddLab03Identity();
+builder.AddSecureLabAntiforgery();
+builder.AddSearchRateLimiting();
+builder.AddRedisSearchRateLimit();
 
 if (builder.Environment.IsDevelopment())
 {
@@ -59,17 +63,25 @@ const string ContentSecurityPolicy =
 
 app.Use(async (context, next) =>
 {
-    context.Response.Headers.XContentTypeOptions = "nosniff";
-    context.Response.Headers.Append("Referrer-Policy", "no-referrer");
-
-    // Development-довідник Scalar має власні inline-ресурси, тому він поза політикою клієнта.
-    var isDevelopmentApiReference =
-        app.Environment.IsDevelopment()
-        && context.Request.Path.StartsWithSegments("/scalar");
-    if (!isDevelopmentApiReference)
+    // OnStarting спрацьовує в момент відправлення відповіді, тобто також після того,
+    // як UseExceptionHandler очистив відповідь на шляху помилки.
+    context.Response.OnStarting(() =>
     {
-        context.Response.Headers["Content-Security-Policy"] = ContentSecurityPolicy;
-    }
+        var headers = context.Response.Headers;
+        headers.XContentTypeOptions = "nosniff";
+        headers["Referrer-Policy"] = "no-referrer";
+
+        // Development-довідник Scalar має власні inline-ресурси, тому він поза політикою клієнта.
+        var isDevelopmentApiReference =
+            app.Environment.IsDevelopment()
+            && context.Request.Path.StartsWithSegments("/scalar");
+        if (!isDevelopmentApiReference)
+        {
+            headers["Content-Security-Policy"] = ContentSecurityPolicy;
+        }
+
+        return Task.CompletedTask;
+    });
 
     await next(context);
 });
@@ -105,6 +117,7 @@ app.MapGet("/health", async (SecureLabDbContext dbContext, CancellationToken can
 app.MapIncidentEndpoints();
 app.MapIncidentCommentEndpoints();
 app.MapLab03Identity();
+app.MapAntiforgeryToken();
 app.MapLab02Endpoints();
 app.MapFallbackToFile("index.html");
 

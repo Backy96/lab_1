@@ -16,7 +16,9 @@ public sealed class SecureLabApiFactory : WebApplicationFactory<Program>
         builder.ConfigureAppConfiguration((_, config) =>
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["RateLimiting:LoginPermitLimit"] = "1000"
+                ["RateLimiting:LoginPermitLimit"] = "1000",
+                ["RateLimiting:SearchPermitLimit"] = "1000",
+                ["RateLimiting:RegisterPermitLimit"] = "1000"
             }));
         builder.ConfigureLogging(logging => logging.AddProvider(Logs));
     }

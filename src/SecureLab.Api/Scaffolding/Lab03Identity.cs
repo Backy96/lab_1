@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using SecureLab.Api.Data;
 using SecureLab.Api.Data.Entities;
+using SecureLab.Api.Security;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 
@@ -47,8 +48,10 @@ public static class Lab03Identity
                 options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
                 options.OnRejected = (context, _) =>
                 {
+                    // Спільний обробник для всіх policies: шлях без query string, щоб не логувати пошуковий текст.
                     context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
-                        .CreateLogger("SecureLab.Auth").LogWarning("Login rate limit exceeded");
+                        .CreateLogger("SecureLab.RateLimiting")
+                        .LogWarning("Rate limit exceeded for {Path}", context.HttpContext.Request.Path);
                     return ValueTask.CompletedTask;
                 };
                 options.AddPolicy("login", httpContext => RateLimitPartition.GetFixedWindowLimiter(
@@ -57,6 +60,19 @@ public static class Lab03Identity
                     {
                         PermitLimit = permitLimit,
                         Window = window,
+                        QueueLimit = 0
+                    }));
+
+                // Реєстрація відповідає 409 на зайняте ім'я або email, тому без обмеження
+                // частоти вона дає необмежений перебір існуючих облікових записів.
+                var registerPermitLimit = config.GetValue("RateLimiting:RegisterPermitLimit", 5);
+                var registerWindow = TimeSpan.FromSeconds(config.GetValue("RateLimiting:RegisterWindowSeconds", 300));
+                options.AddPolicy("register", httpContext => RateLimitPartition.GetFixedWindowLimiter(
+                    httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = registerPermitLimit,
+                        Window = registerWindow,
                         QueueLimit = 0
                     }));
             });
@@ -89,7 +105,7 @@ public static class Lab03Identity
             if (!role.Succeeded) throw new InvalidOperationException("Default role assignment failed.");
             loggers.CreateLogger("SecureLab.Auth").LogInformation("User registered {UserId}", user.Id);
             return Results.Created("/api/me", new RegistrationResponse(user.Id, user.UserName!, user.DisplayName));
-        });
+        }).RequireRateLimiting("register");
         app.MapPost("/api/auth/login", async (LoginInput input, SignInManager<ApplicationUser> signIn,
             UserManager<ApplicationUser> users, ILoggerFactory loggers) =>
         {
@@ -109,12 +125,13 @@ public static class Lab03Identity
             log.LogInformation("Login succeeded for user {UserId}", user?.Id);
             return Results.NoContent();
         }).RequireRateLimiting("login");
+        // Фільтр перевіряє request token до виклику handler, тобто до SignOutAsync.
         app.MapPost("/api/auth/logout", async (SignInManager<ApplicationUser> signIn, ILoggerFactory loggers) =>
         {
             await signIn.SignOutAsync();
             loggers.CreateLogger("SecureLab.Auth").LogInformation("Logout completed");
             return Results.NoContent();
-        });
+        }).RequireAntiforgeryValidation();
 
         app.MapGet("/api/me", (HttpContext httpContext) => GetCurrentUser(httpContext)).RequireAuthorization();
         // Приклад лише mechanics: не повертає identity і не реалізує оцінювану operation.

@@ -112,7 +112,7 @@ public sealed class AuthorizationTests(SecureLabApiFactory factory) : IClassFixt
     [Fact]
     public async Task A02_Owner_CanReadAndUpdateOwnIncident()
     {
-        using var alice = await factory.LoginAsync("alice");
+        using var alice = await factory.LoginWithCsrfAsync("alice");
         var id = await CreateAsync(alice, $"A02-{Guid.NewGuid():N}");
         try
         {
@@ -140,7 +140,7 @@ public sealed class AuthorizationTests(SecureLabApiFactory factory) : IClassFixt
     public async Task A03_ForeignRead_Returns404_WithoutForeignData()
     {
         var bob = await LoadAsync(DbSeeder.BobIncidentId);
-        using var alice = await factory.LoginAsync("alice");
+        using var alice = await factory.LoginWithCsrfAsync("alice");
 
         using var response = await alice.GetAsync($"/api/incidents/{DbSeeder.BobIncidentId}");
         var body = await response.Content.ReadAsStringAsync();
@@ -157,7 +157,7 @@ public sealed class AuthorizationTests(SecureLabApiFactory factory) : IClassFixt
     public async Task A03_ForeignUpdate_Returns404_AndStateIsUnchanged()
     {
         var before = await LoadAsync(DbSeeder.BobIncidentId);
-        using var alice = await factory.LoginAsync("alice");
+        using var alice = await factory.LoginWithCsrfAsync("alice");
 
         using var response = await alice.PutAsJsonAsync(
             $"/api/incidents/{DbSeeder.BobIncidentId}",
@@ -174,7 +174,7 @@ public sealed class AuthorizationTests(SecureLabApiFactory factory) : IClassFixt
     [Fact]
     public async Task A03R_Analyst_CanReadAnyIncident()
     {
-        using var morgan = await factory.LoginAsync("morgan");
+        using var morgan = await factory.LoginWithCsrfAsync("morgan");
 
         using var alice = await morgan.GetAsync($"/api/incidents/{DbSeeder.AliceIncidentId}");
         using var bob = await morgan.GetAsync($"/api/incidents/{DbSeeder.BobIncidentId}");
@@ -186,8 +186,8 @@ public sealed class AuthorizationTests(SecureLabApiFactory factory) : IClassFixt
     [Fact]
     public async Task A04_ForeignDelete_Returns404_AndResourceRemains_OwnerDeleteSucceeds()
     {
-        using var alice = await factory.LoginAsync("alice");
-        using var bob = await factory.LoginAsync("bob");
+        using var alice = await factory.LoginWithCsrfAsync("alice");
+        using var bob = await factory.LoginWithCsrfAsync("bob");
         var id = await CreateAsync(bob, $"A04-{Guid.NewGuid():N}");
         try
         {
@@ -208,7 +208,7 @@ public sealed class AuthorizationTests(SecureLabApiFactory factory) : IClassFixt
     [Fact]
     public async Task A06_ReporterTriage_Own403_Foreign404_StatusUnchanged()
     {
-        using var alice = await factory.LoginAsync("alice");
+        using var alice = await factory.LoginWithCsrfAsync("alice");
         var id = await CreateAsync(alice, $"A06-{Guid.NewGuid():N}");
         var bobBefore = await LoadAsync(DbSeeder.BobIncidentId);
         try
@@ -233,8 +233,8 @@ public sealed class AuthorizationTests(SecureLabApiFactory factory) : IClassFixt
     [Fact]
     public async Task A07_AnalystTriage_NewIncident_Returns204_RecordsHistory_ThenConflict()
     {
-        using var alice = await factory.LoginAsync("alice");
-        using var morgan = await factory.LoginAsync("morgan");
+        using var alice = await factory.LoginWithCsrfAsync("alice");
+        using var morgan = await factory.LoginWithCsrfAsync("morgan");
         var id = await CreateAsync(alice, $"A07-{Guid.NewGuid():N}");
         try
         {
@@ -263,7 +263,7 @@ public sealed class AuthorizationTests(SecureLabApiFactory factory) : IClassFixt
     [Fact]
     public async Task A08a_ForgedOwnerRoleStatusSeverity_AreIgnored()
     {
-        using var alice = await factory.LoginAsync("alice");
+        using var alice = await factory.LoginWithCsrfAsync("alice");
         var id = await CreateAsync(alice, $"A08-{Guid.NewGuid():N}");
         try
         {
@@ -297,7 +297,7 @@ public sealed class AuthorizationTests(SecureLabApiFactory factory) : IClassFixt
     [Fact]
     public async Task A09_DeniedTriage_WritesAuditEvent_WithMatchingTraceId_AndNoSecrets()
     {
-        using var alice = await factory.LoginAsync("alice");
+        using var alice = await factory.LoginWithCsrfAsync("alice");
         var id = await CreateAsync(alice, $"A09-{Guid.NewGuid():N}");
         try
         {
@@ -333,7 +333,7 @@ public sealed class AuthorizationTests(SecureLabApiFactory factory) : IClassFixt
     [Fact]
     public async Task A10_ForeignAndUnknownResource_AreIndistinguishable()
     {
-        using var alice = await factory.LoginAsync("alice");
+        using var alice = await factory.LoginWithCsrfAsync("alice");
 
         using var foreignGet = await alice.GetAsync($"/api/incidents/{DbSeeder.BobIncidentId}");
         using var unknownGet = await alice.GetAsync($"/api/incidents/{UnknownId}");
@@ -358,7 +358,7 @@ public sealed class AuthorizationTests(SecureLabApiFactory factory) : IClassFixt
     [Fact]
     public async Task A11_SearchAndSeveritySummary_AreLimitedToAllowedSet()
     {
-        using var alice = await factory.LoginAsync("alice");
+        using var alice = await factory.LoginWithCsrfAsync("alice");
 
         var obrien = await alice.GetFromJsonAsync<List<IncidentSearchItem>>(
             "/api/incidents/search?q=" + Uri.EscapeDataString("O'Brien"));
@@ -385,7 +385,7 @@ public sealed class AuthorizationTests(SecureLabApiFactory factory) : IClassFixt
             own.Select(group => $"{group.Key}={group.Count}").Order().ToList(),
             summary.Select(group => $"{group.Severity}={group.Count}").Order().ToList());
 
-        using var morgan = await factory.LoginAsync("morgan");
+        using var morgan = await factory.LoginWithCsrfAsync("morgan");
         var analystSearch = await morgan.GetFromJsonAsync<List<IncidentSearchItem>>(
             "/api/incidents/search?q=" + Uri.EscapeDataString("O'Brien"));
         Assert.NotNull(analystSearch);
@@ -400,7 +400,7 @@ public sealed class AuthorizationTests(SecureLabApiFactory factory) : IClassFixt
     [Fact]
     public async Task A12_ChildComment_FollowsParentAndInternalPolicy()
     {
-        using var alice = await factory.LoginAsync("alice");
+        using var alice = await factory.LoginWithCsrfAsync("alice");
 
         using var foreignComment = await alice.GetAsync($"/api/incident-comments/{CommentOfBobId}");
         Assert.Equal(HttpStatusCode.NotFound, foreignComment.StatusCode);
@@ -421,7 +421,7 @@ public sealed class AuthorizationTests(SecureLabApiFactory factory) : IClassFixt
         Assert.DoesNotContain(aliceDetails.Comments, item => item.Id == InternalCommentId);
         Assert.DoesNotContain(aliceDetails.Comments, item => item.IsInternal);
 
-        using var morgan = await factory.LoginAsync("morgan");
+        using var morgan = await factory.LoginWithCsrfAsync("morgan");
         using var internalForAnalyst = await morgan.GetAsync($"/api/incident-comments/{InternalCommentId}");
         Assert.Equal(HttpStatusCode.OK, internalForAnalyst.StatusCode);
         var internalBody = await internalForAnalyst.Content.ReadFromJsonAsync<IncidentCommentResponse>();
