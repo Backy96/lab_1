@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using SecureLab.Api.Application.Incidents;
 using SecureLab.Api.Data;
 using SecureLab.Api.Data.Entities;
+using SecureLab.Api.Security;
 
 namespace SecureLab.Api.Scaffolding;
 
@@ -115,7 +116,7 @@ public static class Lab02Endpoints
                 incident.Id, incident.Title, incident.Severity.ToString(), incident.Status.ToString(),
                 incident.OccurredAtUtc, incident.CreatedAtUtc, incident.UpdatedAtUtc);
             return Results.Created($"/api/incidents/{incident.Id}", response);
-        }).RequireAuthorization();
+        }).RequireAuthorization().RequireAntiforgeryValidation();
     }
 }
 

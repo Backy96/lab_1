@@ -65,7 +65,7 @@ public sealed class AuthenticationTests(SecureLabApiFactory factory) : IClassFix
     [Fact]
     public async Task A02_LoginThenMe_ReturnsUserFromCookie()
     {
-        using var client = await factory.LoginAsync("alice", Password);
+        using var client = await factory.LoginWithCsrfAsync("alice", Password);
 
         using var response = await client.GetAsync("/api/me");
 
@@ -79,7 +79,7 @@ public sealed class AuthenticationTests(SecureLabApiFactory factory) : IClassFix
     [Fact]
     public async Task A03_ForeignDemoHeader_DoesNotChangeCurrentUser()
     {
-        using var alice = await factory.LoginAsync("alice", Password);
+        using var alice = await factory.LoginWithCsrfAsync("alice", Password);
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/me");
         request.Headers.Add("X-Demo-UserId", DbSeeder.BobId.ToString());
 
@@ -94,7 +94,7 @@ public sealed class AuthenticationTests(SecureLabApiFactory factory) : IClassFix
     public async Task A04_CreateWithoutOwner_OwnerIsAuthenticatedUser()
     {
         var title = $"A04-{Guid.NewGuid():N}";
-        using var bob = await factory.LoginAsync("bob", Password);
+        using var bob = await factory.LoginWithCsrfAsync("bob", Password);
         try
         {
             using var response = await bob.PostAsJsonAsync("/api/incidents", NewIncident(title));
@@ -118,7 +118,7 @@ public sealed class AuthenticationTests(SecureLabApiFactory factory) : IClassFix
     public async Task A05_ForgedOwnerInBody_OwnerStaysAuthenticatedUser()
     {
         var title = $"A05-{Guid.NewGuid():N}";
-        using var bob = await factory.LoginAsync("bob", Password);
+        using var bob = await factory.LoginWithCsrfAsync("bob", Password);
         try
         {
             using var response = await bob.PostAsJsonAsync("/api/incidents", new
@@ -148,7 +148,7 @@ public sealed class AuthenticationTests(SecureLabApiFactory factory) : IClassFix
     [Fact]
     public async Task A06_AfterLogout_MeReturns401()
     {
-        using var client = await factory.LoginAsync("alice", Password);
+        using var client = await factory.LoginWithCsrfAsync("alice", Password);
 
         using var before = await client.GetAsync("/api/me");
         Assert.Equal(HttpStatusCode.OK, before.StatusCode);

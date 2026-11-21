@@ -5,6 +5,7 @@ using Scalar.AspNetCore;
 using SecureLab.Api.Application.Incidents;
 using SecureLab.Api.Data;
 using SecureLab.Api.Presentation.Endpoints;
+using SecureLab.Api.Security;
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
@@ -24,6 +25,7 @@ builder.Services.AddScoped<IncidentQueries>();
 builder.Services.AddSingleton<IAuthorizationHandler, IncidentAuthorizationHandler>();
 
 builder.AddLab03Identity();
+builder.AddSecureLabAntiforgery();
 
 if (builder.Environment.IsDevelopment())
 {
@@ -113,6 +115,7 @@ app.MapGet("/health", async (SecureLabDbContext dbContext, CancellationToken can
 app.MapIncidentEndpoints();
 app.MapIncidentCommentEndpoints();
 app.MapLab03Identity();
+app.MapAntiforgeryToken();
 app.MapLab02Endpoints();
 app.MapFallbackToFile("index.html");
 

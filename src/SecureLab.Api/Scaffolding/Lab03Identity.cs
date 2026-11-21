@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using SecureLab.Api.Data;
 using SecureLab.Api.Data.Entities;
+using SecureLab.Api.Security;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 
@@ -109,12 +110,13 @@ public static class Lab03Identity
             log.LogInformation("Login succeeded for user {UserId}", user?.Id);
             return Results.NoContent();
         }).RequireRateLimiting("login");
+        // Фільтр перевіряє request token до виклику handler, тобто до SignOutAsync.
         app.MapPost("/api/auth/logout", async (SignInManager<ApplicationUser> signIn, ILoggerFactory loggers) =>
         {
             await signIn.SignOutAsync();
             loggers.CreateLogger("SecureLab.Auth").LogInformation("Logout completed");
             return Results.NoContent();
-        });
+        }).RequireAntiforgeryValidation();
 
         app.MapGet("/api/me", (HttpContext httpContext) => GetCurrentUser(httpContext)).RequireAuthorization();
         // Приклад лише mechanics: не повертає identity і не реалізує оцінювану operation.

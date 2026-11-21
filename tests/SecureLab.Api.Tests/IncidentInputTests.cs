@@ -14,7 +14,7 @@ public sealed class IncidentInputTests(SecureLabApiFactory factory)
     private static readonly Guid UsbId = Guid.Parse("20000000-0000-0000-0000-000000000005");
     private static readonly Guid OBrienId = Guid.Parse("20000000-0000-0000-0000-000000000004");
 
-    private Task<HttpClient> LoginAliceAsync() => factory.LoginAsync("alice");
+    private Task<HttpClient> LoginAliceAsync() => factory.LoginWithCsrfAsync("alice");
 
     private static object Body(string title, string description = "Штучний опис для автоматичного тесту.",
         string severity = "Low") => new
@@ -210,7 +210,7 @@ public sealed class IncidentInputTests(SecureLabApiFactory factory)
     [Fact]
     public async Task Search_ApostropheInQuery_ReturnsMatchingRecord()
     {
-        using var bob = await factory.LoginAsync("bob");
+        using var bob = await factory.LoginWithCsrfAsync("bob");
         var rows = await bob.GetFromJsonAsync<List<IncidentSearchItem>>(
             "/api/incidents/search?q=" + Uri.EscapeDataString("O'Brien"));
 
