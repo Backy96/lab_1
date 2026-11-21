@@ -59,17 +59,25 @@ const string ContentSecurityPolicy =
 
 app.Use(async (context, next) =>
 {
-    context.Response.Headers.XContentTypeOptions = "nosniff";
-    context.Response.Headers.Append("Referrer-Policy", "no-referrer");
-
-    // Development-довідник Scalar має власні inline-ресурси, тому він поза політикою клієнта.
-    var isDevelopmentApiReference =
-        app.Environment.IsDevelopment()
-        && context.Request.Path.StartsWithSegments("/scalar");
-    if (!isDevelopmentApiReference)
+    // OnStarting спрацьовує в момент відправлення відповіді, тобто також після того,
+    // як UseExceptionHandler очистив відповідь на шляху помилки.
+    context.Response.OnStarting(() =>
     {
-        context.Response.Headers["Content-Security-Policy"] = ContentSecurityPolicy;
-    }
+        var headers = context.Response.Headers;
+        headers.XContentTypeOptions = "nosniff";
+        headers["Referrer-Policy"] = "no-referrer";
+
+        // Development-довідник Scalar має власні inline-ресурси, тому він поза політикою клієнта.
+        var isDevelopmentApiReference =
+            app.Environment.IsDevelopment()
+            && context.Request.Path.StartsWithSegments("/scalar");
+        if (!isDevelopmentApiReference)
+        {
+            headers["Content-Security-Policy"] = ContentSecurityPolicy;
+        }
+
+        return Task.CompletedTask;
+    });
 
     await next(context);
 });
