@@ -1,0 +1,4 @@
+restart collector
+start
+end
+endpoint closed

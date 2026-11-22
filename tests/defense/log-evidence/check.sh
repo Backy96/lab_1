@@ -17,7 +17,16 @@ if [ "$rc" -eq 2 ]; then
   exit 0
 fi
 
-interval=unchecked
+# collector contract: at least 2 lines, first line exactly "start", last line exactly "end"
+lines=$(awk 'END { print NR }' "$file")
+first=$(head -n 1 "$file")
+last=$(tail -n 1 "$file")
+if [ "$lines" -ge 2 ] && [ "$first" = "start" ] && [ "$last" = "end" ]; then
+  interval=complete
+else
+  echo "read=ok marker=valid interval=incomplete matches=$count verdict=INCOMPLETE_INTERVAL"
+  exit 0
+fi
 
 if [ "$count" -gt 0 ]; then
   verdict=FOUND
